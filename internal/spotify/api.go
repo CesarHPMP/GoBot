@@ -21,8 +21,7 @@ func InitSpotify(clientID, clientSecret string) {
 		log.Fatal("Error getting Spotify token:", err)
 	}
 
-	c := spotify.Authenticator{}.NewClient(token)
-	client = &c
+	spotifyClient := spotify.Authenticator{}.NewClient(token)
 }
 
 func GetTopTracks() {

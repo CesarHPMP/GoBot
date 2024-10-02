@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/CesarHPMP/GoBot/internal/spotify"
 	"github.com/joho/godotenv"
+	"github.com/zmb3/spotify"
 	"golang.org/x/oauth2"
 )
 
