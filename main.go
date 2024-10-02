@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/CesarHPMP/GoBot/internal/spotify"
+	MySpotify "github.com/CesarHPMP/GoBot/internal/spotify"
 	"github.com/joho/godotenv"
 	"golang.org/x/oauth2"
 )
@@ -33,7 +33,7 @@ func init() {
 		ClientID:     clientId,
 		ClientSecret: clientSecret,
 		RedirectURL:  redirectURI,
-		Scopes:       []string{"user-read-private"},
+		Scopes:       []string{"user-read-private", "user-top-read"},
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  "https://accounts.spotify.com/authorize",
 			TokenURL: "https://accounts.spotify.com/api/token",
@@ -46,50 +46,53 @@ func main() {
 	http.HandleFunc("/callback", completeAuth)
 
 	initState = generateState()
+
 	if initState == "" {
 		log.Fatal("Failed to generate state")
 	}
+
 	url := config.AuthCodeURL(initState)
-	fmt.Println("Please log in to Spotify by visiting the following page in your browser:", url)
+	fmt.Println("Please log in to Spotify by visiting the following page in your browser (30 seconds limit before process is killed):", url)
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	go func() {
+		log.Fatal(http.ListenAndServe(":8080", nil))
+	}()
 
-	InitSpotify(clientId, clientSecret)
+	loginComplete := make(chan bool)
+	<-loginComplete // wait for login to complete
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {
+	//gets state and compares it to the one generated
 	state := r.URL.Query().Get("state")
 	if state != initState {
 		http.Error(w, "Invalid state", http.StatusBadRequest)
 		return
 	}
 
+	// gets code for auth
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		http.Error(w, "Code is missing", http.StatusBadRequest)
 		return
 	}
 
+	// Gets token for client
 	token, err := config.Exchange(context.Background(), code)
+
 	if err != nil {
 		http.Error(w, "Couldn't get token", http.StatusForbidden)
 		log.Fatal(err)
 	}
 
-	// Use the token to authenticate the client
-	client := config.Client(context.Background(), token)
+	MySpotify.InitSpotify(config, token)
+	topTracks, err := MySpotify.GetTopTracks()
 
-	// Create a new Spotify client
-	spotifyClient := spotify.NewClient(client)
-
-	// Use the Spotify client to make requests to the Spotify API
-	user, err := spotifyClient.CurrentUser()
 	if err != nil {
-		http.Error(w, "Couldn't get user", http.StatusInternalServerError)
 		log.Fatal(err)
 	}
 
-	fmt.Fprintf(w, "Login Completed! You are logged in as: %s", user.DisplayName)
+	fmt.Println(topTracks)
 }
 
 func generateState() string {

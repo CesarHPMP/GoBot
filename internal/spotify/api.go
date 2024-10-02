@@ -1,40 +1,24 @@
 package spotify
 
 import (
-	"context"
 	"log"
 
 	"github.com/zmb3/spotify"
-	"golang.org/x/oauth2/clientcredentials"
+	"golang.org/x/oauth2"
 )
 
-var client *spotify.Client
+var client spotify.Client
 
-func InitSpotify(clientID, clientSecret string) {
-	config := &clientcredentials.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		TokenURL:     spotify.TokenURL,
-	}
-	token, err := config.Token(context.Background())
-	if err != nil {
-		log.Fatal("Error getting Spotify token:", err)
-	}
-
-	c := spotify.Authenticator{}.NewClient(token)
-	client = &c
+func InitSpotify(config *oauth2.Config, token *oauth2.Token) {
+	client = spotify.Authenticator{}.NewClient(token)
 }
 
-func GetTopTracks() {
-	user, err := client.CurrentUser()
-	if err != nil {
-		log.Fatal("Error getting current user:", err)
-	}
-
+func GetTopTracks() (*spotify.FullTrackPage, error) {
 	topTracks, err := client.CurrentUsersTopTracks()
 	if err != nil {
 		log.Fatal("Error getting top tracks:", err)
+		return nil, err
 	}
 
-	log.Printf("Top tracks for user %s: %+v", user.DisplayName, topTracks)
+	return topTracks, nil
 }
