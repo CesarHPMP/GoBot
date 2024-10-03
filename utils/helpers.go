@@ -1,7 +1,10 @@
 package utils
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -18,4 +21,13 @@ func PrintError(err error) {
 	if err != nil {
 		fmt.Println("Error:", err)
 	}
+}
+
+func GenerateState() string {
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(b)
 }
