@@ -3,11 +3,17 @@ package discord
 import (
 	"log"
 
+	"github.com/CesarHPMP/GoBot/config"
+	"github.com/CesarHPMP/GoBot/internal/spotify"
 	"github.com/bwmarrin/discordgo"
 )
 
-func StartBot(token string) error {
+func StartBot() error {
+
+	token, _, _ := config.LoadConfig()
+
 	dg, err := discordgo.New("Bot " + token)
+
 	if err != nil {
 		return err
 	}
@@ -30,5 +36,15 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	if m.Content == "!ping" {
 		s.ChannelMessageSend(m.ChannelID, "Pong!")
+	}
+}
+
+func ReadMessageAndConnect(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if m.Author.ID == s.State.User.ID {
+		return
+	}
+
+	if m.Content == "/connect" {
+		spotify.Starting(s, m.ChannelID)
 	}
 }
