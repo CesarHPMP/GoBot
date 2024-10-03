@@ -1,6 +1,7 @@
 package discord
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/CesarHPMP/GoBot/config"
@@ -8,28 +9,34 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func StartBot() error {
+func StartBot() (*discordgo.Session, error) {
 
 	token, _, _ := config.LoadConfig()
 
 	dg, err := discordgo.New("Bot " + token)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	dg.AddHandler(messageCreate)
 
 	err = dg.Open()
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	ChannelID := "1291147572265746524"
+
+	// Send a message to the specific channel
+	_, err = dg.ChannelMessageSend(ChannelID, "Hello, Discord channel!")
+	if err != nil {
+		fmt.Println("Error sending message,", err)
 	}
 
 	log.Println("Bot is now running.")
-	return nil
+	return dg, nil
 }
 
-func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
