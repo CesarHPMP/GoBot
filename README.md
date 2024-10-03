@@ -40,7 +40,6 @@ GoBot is a Go-based bot that interacts with the Spotify API and Discord. It allo
 1. Set environment variables for Spotify API credentials: `export SPOTIFY_CLIENT_ID=your_client_id` and `export SPOTIFY_CLIENT_SECRET=your_client_secret`
 2. Set environment variable for Discord API credentials: `export DISCORD_BOT_TOKEN=your_bot_token`
 3. Run the project by running the executable generated in the build directory.
-4. Follow the prompts to authenticate with Spotify and retrieve your top tracks
 
 ## API Documentation
 
