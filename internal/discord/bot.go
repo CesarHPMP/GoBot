@@ -3,6 +3,7 @@ package discord
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/CesarHPMP/GoBot/config"
 	"github.com/CesarHPMP/GoBot/internal/spotify"
@@ -18,6 +19,8 @@ func StartBot() (*discordgo.Session, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	dg.AddHandler(ReadMessageAndConnect)
 
 	err = dg.Open()
 	if err != nil {
@@ -41,8 +44,8 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	if m.Content == "!ping" {
-		s.ChannelMessageSend(m.ChannelID, "Pong!")
+	if strings.HasPrefix(m.Content, "/connect") {
+		spotify.Starting(s, m.ChannelID)
 	}
 }
 
