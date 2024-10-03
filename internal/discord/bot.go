@@ -1,7 +1,6 @@
 package discord
 
 import (
-	"fmt"
 	"log"
 	"strings"
 
@@ -9,6 +8,8 @@ import (
 	"github.com/CesarHPMP/GoBot/internal/spotify"
 	"github.com/bwmarrin/discordgo"
 )
+
+var Finish_run = make(chan bool)
 
 func StartBot() (*discordgo.Session, error) {
 
@@ -20,41 +21,43 @@ func StartBot() (*discordgo.Session, error) {
 		return nil, err
 	}
 
-	dg.AddHandler(ReadMessageAndConnect)
-
 	err = dg.Open()
 	if err != nil {
 		return nil, err
 	}
-
-	ChannelID := "1291147572265746524"
-
-	// Send a message to the specific channel
-	_, err = dg.ChannelMessageSend(ChannelID, "Hello, Discord channel!")
-	if err != nil {
-		fmt.Println("Error sending message,", err)
-	}
-
 	log.Println("Bot is now running.")
+
 	return dg, nil
 }
 
 func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+	// Ignore messages from the bot itself
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
 
+	// Log the received message object
+	log.Printf("Received message object: %+v\n", m)
+
+	// Log the raw content of the message
+	log.Printf("Message content length: %d\n", len(m.Content))
+	log.Printf("Raw message content: %q\n", m.Content)
+
+	// Check if the message content is empty
+	if m.Content == "" {
+		log.Println("Content is empty")
+		return
+	}
+
+	// Check for the /connect command
 	if strings.HasPrefix(m.Content, "/connect") {
+		log.Println("Received /connect command")
 		spotify.Starting(s, m.ChannelID)
 	}
-}
 
-func ReadMessageAndConnect(s *discordgo.Session, m *discordgo.MessageCreate) {
-	if m.Author.ID == s.State.User.ID {
-		return
-	}
-
-	if m.Content == "/connect" {
-		spotify.Starting(s, m.ChannelID)
+	// Check for the /turnoff command
+	if strings.HasPrefix(m.Content, "/turnoff") {
+		log.Println("Received /turnoff command")
+		Finish_run <- true
 	}
 }

@@ -20,7 +20,7 @@ var Client spotify.Client
 var (
 	clientId     string
 	clientSecret string
-	redirectURI  = "http://localhost:8080/callback"
+	redirectURI  = "https://select-sheep-currently.ngrok-free.app/callback"
 	initState    string
 	config       *oauth2.Config
 	authDone     = make(chan bool) // Channel to signal when auth is done
@@ -72,6 +72,9 @@ func Starting(dg *discordgo.Session, channelID string) {
 	fmt.Println("Waiting for user to log in...")
 	<-authDone // Block until the auth is complete
 	fmt.Println("User logged in successfully! Continuing with the flow...")
+
+	top_tracks, err := GetTopTracks()
+	dg.ChannelMessageSend(channelID, top_tracks)
 
 	if err != nil {
 		log.Fatal(err)
