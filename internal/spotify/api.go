@@ -174,7 +174,7 @@ func GetTopAlbums() (string, error) {
 	}
 
 	limit := 50
-	timeRange := "medium" // Use Spotify's time range keyword
+	timeRange := "long" // Use Spotify's time range keyword
 	hashTable := utils.NewHashTable()
 
 	var options = &spotify.Options{
