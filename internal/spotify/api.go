@@ -2,9 +2,13 @@ package spotify
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
+	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/zmb3/spotify"
@@ -15,7 +19,8 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-var Client spotify.Client
+var Client *spotify.Client
+var Connected bool
 
 var (
 	clientId     string
@@ -48,6 +53,10 @@ func init() {
 }
 
 func Starting(dg *discordgo.Session, channelID string) {
+	if dg.Client == nil {
+		log.Fatal("Client is nil")
+	}
+
 	fmt.Println("Client ID:", clientId)
 	http.HandleFunc("/callback", completeAuth)
 
@@ -68,20 +77,27 @@ func Starting(dg *discordgo.Session, channelID string) {
 		log.Fatal(http.ListenAndServe(":8080", nil))
 	}()
 
-	// Wait for the auth process to finish
-	fmt.Println("Waiting for user to log in...")
-	<-authDone // Block until the auth is complete
-	fmt.Println("User logged in successfully! Continuing with the flow...")
+	// Create a timeout channel that will signal after 30 seconds
+	timeout := time.After(30 * time.Second)
 
-	top_tracks, err := GetTopTracks()
-	dg.ChannelMessageSend(channelID, top_tracks)
-
-	if err != nil {
-		log.Fatal(err)
+	// Wait for either the auth process to finish or the timeout to occur
+	select {
+	case <-authDone: // Authentication was successful
+		fmt.Println("User logged in successfully! Continuing with the flow...")
+		_, _ = dg.ChannelMessageSend(channelID, "Authentication successful! You are now logged in.")
+		Connected = true
+	case <-timeout: // Timeout occurred
+		fmt.Println("Authentication timed out after 30 seconds.")
+		_, _ = dg.ChannelMessageSend(channelID, "Authentication timed out. Please try again.")
+		// Cancel the auth process by closing the HTTP server
+		go func() {
+			http.DefaultServeMux = new(http.ServeMux) // Reset the default serve mux to stop listening
+		}()
 	}
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {
+
 	// Gets state and compares it to the one generated
 	state := r.URL.Query().Get("state")
 	if state != initState {
@@ -105,15 +121,25 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 
 	InitSpotify(config, token)
 
+	if Client == nil {
+		http.Error(w, "Couldn't get client", http.StatusForbidden)
+		return
+	}
+
 	// Notify the main thread that authentication is complete
 	authDone <- true // Signal that authentication is finished
 }
 
 func InitSpotify(config *oauth2.Config, token *oauth2.Token) {
-	Client = spotify.Authenticator{}.NewClient(token)
+	c := spotify.Authenticator{}.NewClient(token)
+	Client = &c
 }
 
 func GetTopTracks() (string, error) {
+	if Client == nil {
+		return "", errors.New("client is not initialized")
+	}
+
 	// Fetch the top tracks
 	topTracks, err := Client.CurrentUsersTopTracks()
 	if err != nil {
@@ -140,4 +166,83 @@ func GetTopTracks() (string, error) {
 
 	// Return the formatted string containing the top tracks
 	return trackList, nil
+}
+
+func GetTopAlbums() (string, error) {
+	if Client == nil {
+		return "", errors.New("client is not initialized")
+	}
+
+	limit := 50
+	timeRange := "medium" // Use Spotify's time range keyword
+	hashTable := utils.NewHashTable()
+
+	var options = &spotify.Options{
+		Limit:     &limit,
+		Timerange: &timeRange,
+	}
+
+	// Fetch the top 50 tracks from the user’s account
+	topTracks, err := Client.CurrentUsersTopTracksOpt(options)
+	if err != nil {
+		return "", err
+	}
+
+	// Count how many times each album appears, without repeating albums
+	for _, track := range topTracks.Tracks {
+		hashTable.Add(track.Album.Name) // Track album appearances
+	}
+
+	// Extract albums and their counts into a slice of key-value pairs
+	type albumCount struct {
+		Album   string
+		Count   int
+		Artists string
+	}
+
+	var albums []albumCount
+	for _, track := range topTracks.Tracks {
+		count := hashTable.Get(track.Album.Name)
+		alreadyInList := false
+
+		// Check if album already exists in the slice
+		for _, a := range albums {
+			if a.Album == track.Album.Name {
+				alreadyInList = true
+				break
+			}
+		}
+
+		// Only add the album if it hasn't been added yet
+		if !alreadyInList {
+			// Get all artists' names and join them in a string
+			artistNames := make([]string, len(track.Album.Artists))
+			for i, artist := range track.Album.Artists {
+				artistNames[i] = artist.Name
+			}
+
+			albums = append(albums, albumCount{
+				Album:   track.Album.Name,
+				Count:   count,
+				Artists: strings.Join(artistNames, ", "),
+			})
+		}
+	}
+
+	// Sort albums by count in descending order
+	sort.Slice(albums, func(i, j int) bool {
+		return albums[i].Count > albums[j].Count
+	})
+
+	// Prepare a string to hold the formatted album list
+	albumList := ""
+	for i, album := range albums {
+		albumList += fmt.Sprintf("%d. %s by %s\n", i+1, album.Album, album.Artists)
+		if i == 9 { // Limit to the top 10 albums
+			break
+		}
+	}
+
+	// Return the formatted string containing the top albums without duplicates
+	return albumList, nil
 }

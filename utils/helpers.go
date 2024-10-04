@@ -8,6 +8,10 @@ import (
 	"strings"
 )
 
+type HashTable struct {
+	table map[string]int
+}
+
 // TrimSlice trims all strings in a slice
 func TrimSlice(slice []string) []string {
 	for i := range slice {
@@ -30,4 +34,28 @@ func GenerateState() string {
 		log.Fatal(err)
 	}
 	return base64.StdEncoding.EncodeToString(b)
+}
+
+func NewHashTable() *HashTable {
+	return &HashTable{
+		table: make(map[string]int),
+	}
+}
+
+// Add increments the count for the given album name (keystring)
+func (h *HashTable) Add(keystring string) {
+	if h.table[keystring] > 0 {
+		h.table[keystring]++
+	} else {
+		h.table[keystring] = 1
+	}
+}
+
+// Get returns the count for the given album name (keystring)
+func (h *HashTable) Get(keystring string) int {
+	if h.table[keystring] > 0 {
+		return h.table[keystring]
+	} else {
+		return 0
+	}
 }

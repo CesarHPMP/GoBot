@@ -31,6 +31,11 @@ func StartBot() (*discordgo.Session, error) {
 }
 
 func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+
+	if s.Client == nil {
+		return
+	}
+
 	// Ignore messages from the bot itself
 	if m.Author.ID == s.State.User.ID {
 		return
@@ -38,8 +43,6 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// Log the received message object
 	log.Printf("Received message object: %+v\n", m)
-
-	// Log the raw content of the message
 	log.Printf("Message content length: %d\n", len(m.Content))
 	log.Printf("Raw message content: %q\n", m.Content)
 
@@ -49,14 +52,46 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	// Check for the /connect command
-	if strings.HasPrefix(m.Content, "/connect") {
-		log.Println("Received /connect command")
-		spotify.Starting(s, m.ChannelID)
+	// Local function to check authentication
+	checkAuth := func() error {
+		if !spotify.Connected {
+			_, err := s.ChannelMessageSend(m.ChannelID, "Not logged in, please use /connect to log in.")
+			return err
+		}
+		return nil
 	}
 
-	// Check for the /turnoff command
-	if strings.HasPrefix(m.Content, "/turnoff") {
+	// Use switch to handle commands
+	switch {
+	case strings.HasPrefix(m.Content, "/connect"):
+		// Connect to Spotify
+		spotify.Starting(s, m.ChannelID)
+
+	case strings.HasPrefix(m.Content, "/TopTracks"):
+		err := checkAuth()
+		if err != nil {
+			break
+		}
+		topTracks, err := spotify.GetTopTracks()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		s.ChannelMessageSend(m.ChannelID, topTracks)
+
+	case strings.HasPrefix(m.Content, "/TopAlbums"):
+		err := checkAuth()
+		if err != nil {
+			break
+		}
+		topAlbums, err := spotify.GetTopAlbums()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		s.ChannelMessageSend(m.ChannelID, topAlbums)
+
+	case strings.HasPrefix(m.Content, "/turnoff"):
 		log.Println("Received /turnoff command")
 		Finish_run <- true
 	}
