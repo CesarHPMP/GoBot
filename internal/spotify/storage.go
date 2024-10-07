@@ -4,9 +4,11 @@ import (
 	"encoding/csv"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
-	"github.com/CesarHPMP/GoBot/database"
+	db "github.com/CesarHPMP/GoBot/dataBase"
 )
 
 // InputTopTracks reads top tracks from a specified CSV file and stores them in the database
@@ -38,16 +40,25 @@ func InputTopTracks(dataSourceName string) error {
 		artist := strings.TrimSpace(record[1])
 		album := strings.TrimSpace(record[2])
 
+		_, month, year := time.Now().Date()
+		date := string(month) + string(year)
+		dateint, err := strconv.Atoi(date)
+
+		if err != nil {
+			return err
+		}
+
 		// Create a Track instance
-		track := &database.Track{
-			UserID:    0, // You can modify this to reflect the actual user ID
-			TrackName: trackName,
-			Artist:    artist,
-			Album:     album,
+		track := &db.TopTrack{
+			UserID:  0, // You can modify this to reflect the actual user ID
+			Name:    trackName,
+			Artists: artist,
+			Album:   album,
+			AddedAt: dateint,
 		}
 
 		// Store the track in the database
-		if err := database.SaveTrack(track); err != nil {
+		if err := db.SaveTrack(track); err != nil {
 			return err
 		}
 	}
