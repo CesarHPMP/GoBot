@@ -5,8 +5,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/zmb3/spotify"
-
 	"github.com/CesarHPMP/GoBot/config"
 	Myspotify "github.com/CesarHPMP/GoBot/internal/spotify"
 	"github.com/bwmarrin/discordgo"
@@ -14,7 +12,7 @@ import (
 
 var Finish_run = make(chan bool)
 var Wg sync.WaitGroup // Add WaitGroup to track async operations
-var userSpotifyClients = make(map[string]*spotify.Client)
+var userSpotifyClients = make(map[string]*Myspotify.SpotifyClient)
 
 func StartBot() (*discordgo.Session, error) {
 
@@ -45,7 +43,7 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
-	var userID string
+	var userID = m.Author.ID
 
 	// Log the received message object
 	log.Printf("Received message object: %+v\n", m)
@@ -70,55 +68,72 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Use switch to handle commands
 	switch {
 	case strings.HasPrefix(m.Content, "/connect"):
-		// Connect to Spotify
+		userID := m.Author.ID
+
 		Wg.Add(1) // Increment WaitGroup counter for the new goroutine
 		go func() {
 			defer Wg.Done() // Ensure the counter is decremented when the goroutine finishes
-			userSpotifyClients[userID] = Myspotify.Sc.Starting(s, m)
 
+			// Create a new SpotifyClient for the user
+			userClient := Myspotify.NewSpotifyClient()
+			userSpotifyClients[userID] = userClient
+
+			// Start the authentication process for this user
+			spotifyClient := userSpotifyClients[userID].Starting(s, m, userID)
+			if spotifyClient == nil {
+				log.Println("Spotify authentication failed for user:", userID)
+				return
+			}
 		}()
 
 	case strings.HasPrefix(m.Content, "/TopTracks"):
-		err := checkAuth()
+		userID := m.Author.ID
+
+		err := checkAuth() // Pass userID to check authentication
 		if err != nil {
 			break
 		}
+
 		Wg.Add(1) // Increment WaitGroup counter for the new goroutine
 		go func() {
-			defer Wg.Done() // Ensure the counter is decremented when the goroutine finishes
-			topTracks, err := Myspotify.GetTopTracks()
-			if err != nil {
-				log.Println(err)
+			defer Wg.Done()                        // Ensure the counter is decremented when the goroutine finishes
+			userClient := getSpotifyClient(userID) // Get the correct SpotifyClient for this user
+			if userClient == nil {
+				log.Println("User not authenticated:", userID)
 				return
 			}
+
+			topTracks, err := userSpotifyClients[userID].GetTopTracks() // Fetch top tracks for the authenticated user
+			if err != nil {
+				log.Println("Error fetching top tracks:", err)
+				return
+			}
+
 			s.ChannelMessageSend(m.ChannelID, topTracks)
 		}()
 
 	case strings.HasPrefix(m.Content, "/TopAlbums"):
-		err := checkAuth()
-		if err != nil {
+		if err := checkAuth(); err != nil {
+			log.Println("Error checking authentication:", err)
 			break
 		}
+
 		Wg.Add(1) // Increment WaitGroup counter for the new goroutine
 		go func() {
 			defer Wg.Done() // Ensure the counter is decremented when the goroutine finishes
-			topAlbums, err := Myspotify.GetTopAlbums()
+			topAlbums, err := userSpotifyClients[userID].GetTopAlbums()
 			if err != nil {
 				log.Println(err)
 				return
 			}
 			s.ChannelMessageSend(m.ChannelID, topAlbums)
 		}()
-
-	case strings.HasPrefix(m.Content, "/turnoff"):
-		log.Println("Received /turnoff command")
-		Finish_run <- true
 	}
 }
 
-func getSpotifyClient(userID string) *spotify.Client {
-	if client, exists := userSpotifyClients[userID]; exists {
-		return client
+func getSpotifyClient(userID string) *Myspotify.SpotifyClient {
+	if user_client, exists := userSpotifyClients[userID]; exists {
+		return user_client
 	} else {
 		log.Print("User client does not exist")
 		return nil

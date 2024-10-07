@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 	"github.com/zmb3/spotify"
 	"golang.org/x/oauth2"
 
 	Setup "github.com/CesarHPMP/GoBot/config"
 	"github.com/CesarHPMP/GoBot/utils"
-	"github.com/bwmarrin/discordgo"
 )
 
 // SpotifyClient struct to store individual user session data
@@ -34,8 +34,6 @@ var (
 	clientSecret string
 	defaultURI   = "https://select-sheep-currently.ngrok-free.app/callback" // Default URI
 )
-
-var Sc *SpotifyClient
 
 // Initialize the default Spotify settings (env load)
 func init() {
@@ -69,40 +67,45 @@ func NewSpotifyClient() *SpotifyClient {
 }
 
 // Starting initiates the Spotify login process for a specific user
-func (sc *SpotifyClient) Starting(dg *discordgo.Session, m *discordgo.MessageCreate) *spotify.Client {
+func (sc *SpotifyClient) Starting(dg *discordgo.Session, m *discordgo.MessageCreate, userID string) *spotify.Client {
 	if dg.Client == nil {
-		log.Fatal("Client is nil")
+		log.Fatal("Discord session client is nil")
 	}
 
-	url := Sc.Config.AuthCodeURL(sc.State)
-	_, err := dg.ChannelMessageSend(m.ChannelID, "Please log in to Spotify by visiting the following page in your browser (30 seconds limit before process is killed): "+url)
-
+	url := sc.Config.AuthCodeURL(sc.State)
+	_, err := dg.ChannelMessageSend(m.ChannelID, "Please log in to Spotify by visiting the following page in your browser: "+url)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	var port = ":8080"
+
+	srv := &http.Server{Addr: port}
+
 	go func() {
-		log.Fatal(http.ListenAndServe(":8080", nil))
+		http.HandleFunc("/callback", sc.CompleteAuth)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Println("HTTP server error:", err)
+		}
 	}()
 
-	// Create a timeout channel that will signal after 30 seconds
+	// Create a timeout channel to avoid waiting indefinitely
 	timeout := time.After(30 * time.Second)
 
-	// Wait for either the auth process to finish or the timeout to occur
+	// Wait for either the auth process to finish or the timeout
 	select {
-	case <-sc.AuthDone: // Authentication was successful
-
-		fmt.Println("User logged in successfully! Continuing with the flow...")
+	case <-sc.AuthDone: // Authentication successful
+		fmt.Println("User logged in successfully!")
 		_, _ = dg.ChannelMessageSend(m.ChannelID, "Authentication successful! You are now logged in.")
 		sc.Connected = true
+		srv.Close() // Close server after auth
 		return sc.Client
+
 	case <-timeout: // Timeout occurred
 		fmt.Println("Authentication timed out after 30 seconds.")
 		_, _ = dg.ChannelMessageSend(m.ChannelID, "Authentication timed out. Please try again.")
-		// Cancel the auth process by closing the HTTP server
-		go func() {
-			http.DefaultServeMux = new(http.ServeMux) // Reset the default serve mux to stop listening
-		}()
+		srv.Close() // Close server after timeout
+		return nil
 	}
 }
 
