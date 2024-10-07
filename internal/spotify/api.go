@@ -80,14 +80,15 @@ func (sc *SpotifyClient) Starting(dg *discordgo.Session, m *discordgo.MessageCre
 
 	var port = ":8080"
 
-	srv := &http.Server{Addr: port}
-
 	go func() {
 		http.HandleFunc("/callback", sc.CompleteAuth)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := http.ListenAndServe(port, nil); err != nil && err != http.ErrServerClosed {
 			log.Println("HTTP server error:", err)
+			return
 		}
 	}()
+
+	srv := &http.Server{Addr: port}
 
 	// Create a timeout channel to avoid waiting indefinitely
 	timeout := time.After(30 * time.Second)
