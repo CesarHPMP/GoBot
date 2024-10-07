@@ -84,6 +84,8 @@ func (sc *SpotifyClient) Starting(dg *discordgo.Session, m *discordgo.MessageCre
 		http.HandleFunc("/callback", sc.CompleteAuth)
 		if err := http.ListenAndServe(port, nil); err != nil && err != http.ErrServerClosed {
 			log.Println("HTTP server error:", err)
+			srv := http.Server{Addr: port}
+			srv.Close()
 			return
 		}
 	}()
