@@ -19,14 +19,13 @@ func main() {
 
 	dg.AddHandler(discord.MessageCreate)
 
-	// Wait for the /turnoff command
 	<-discord.Finish_run
 	log.Println("Bot shutting down due to /turnoff command.")
 
 	// Wait for all goroutines (async tasks) to finish
 	discord.Wg.Wait()
 
-	// Gracefully close the bot
+	// Close the bot
 	if err = dg.Close(); err != nil {
 		log.Fatalf("Error closing bot: %v", err)
 	}
