@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 	"github.com/zmb3/spotify"
 	"golang.org/x/oauth2"
@@ -30,16 +31,16 @@ type SpotifyClient struct {
 }
 
 var (
-	clientId     string
-	clientSecret string
-	defaultURI   = "https://select-sheep-currently.ngrok-free.app/callback" // Default URI
+	clientId           string
+	clientSecret       string
+	defaultURI         = "https://select-sheep-currently.ngrok-free.app/callback" // Default URI
+	UserSpotifyClients = make(map[string]*SpotifyClient)
 )
 
 // Initialize the default Spotify settings (env load)
 func init() {
-	err := godotenv.Load("../spotify.env")
-	if err != nil {
-		log.Fatal(err)
+	if err := godotenv.Load("../spotify.env"); err != nil {
+		log.Fatal("Error loading .env file:", err)
 	}
 
 	_, clientId, clientSecret = Setup.LoadConfig()
@@ -72,76 +73,114 @@ func (sc *SpotifyClient) Starting(dg *discordgo.Session, m *discordgo.MessageCre
 		log.Fatal("Discord session client is nil")
 	}
 
-	url := sc.Config.AuthCodeURL(sc.State)
-	_, err := dg.ChannelMessageSend(m.ChannelID, "Please log in to Spotify by visiting the following page in your browser: "+url)
-	if err != nil {
-		log.Fatal(err)
+	// Generate the authorization URL with userID in the state parameter
+	url := sc.Config.AuthCodeURL(sc.State + ":" + userID)
+
+	// Send the authorization URL to the user
+	if _, err := dg.ChannelMessageSend(m.ChannelID, "Please log in to Spotify by visiting the following page in your browser: "+url); err != nil {
+		log.Println("Error sending message:", err)
 	}
 
-	var port = ":8080"
+	port := ":8080"
+	router := mux.NewRouter()
 
-	go func() {
-		http.HandleFunc("/callback", sc.CompleteAuth)
-		if err := http.ListenAndServe(port, nil); err != nil && err != http.ErrServerClosed {
-			log.Println("HTTP server error:", err)
-			srv := http.Server{Addr: port}
-			srv.Close()
-			return
-		}
-	}()
+	// Register the callback handler
+	router.HandleFunc("/callback/{userID}", sc.CompleteAuth).Methods("GET")
 
-	srv := &http.Server{Addr: port}
+	srv := &http.Server{
+		Addr:    port,
+		Handler: router,
+	}
 
 	// Create a timeout channel to avoid waiting indefinitely
 	timeout := time.After(30 * time.Second)
 
+	go func() {
+		// Start the HTTP server
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Println("HTTP server error:", err)
+		}
+	}()
+
 	// Wait for either the auth process to finish or the timeout
 	select {
 	case <-sc.AuthDone: // Authentication successful
-		fmt.Println("User logged in successfully!")
-		_, _ = dg.ChannelMessageSend(m.ChannelID, "Authentication successful! You are now logged in.")
+		log.Println("User logged in successfully!")
+		if _, err := dg.ChannelMessageSend(m.ChannelID, "Authentication successful! You are now logged in."); err != nil {
+			log.Println("Error sending success message:", err)
+		}
 		sc.Connected = true
-		srv.Close() // Close server after auth
+
+		// Close the server after auth
+		if err := srv.Shutdown(context.Background()); err != nil {
+			log.Println("Server Shutdown Failed:", err)
+		}
 		return sc.Client
 
 	case <-timeout: // Timeout occurred
-		fmt.Println("Authentication timed out after 30 seconds.")
-		_, _ = dg.ChannelMessageSend(m.ChannelID, "Authentication timed out. Please try again.")
-		srv.Close() // Close server after timeout
+		log.Println("Authentication timed out after 30 seconds.")
+		if _, err := dg.ChannelMessageSend(m.ChannelID, "Authentication timed out. Please try again."); err != nil {
+			log.Println("Error sending timeout message:", err)
+		}
+		if err := srv.Shutdown(context.Background()); err != nil {
+			log.Println("Server Shutdown Failed:", err)
+		}
 		return nil
 	}
 }
 
+// CompleteAuth handles the Spotify callback and completes the authentication process
 func (sc *SpotifyClient) CompleteAuth(w http.ResponseWriter, r *http.Request) {
+	// Extract the state parameter
 	state := r.URL.Query().Get("state")
-	if state != sc.State {
+	parts := strings.Split(state, ":")
+	if len(parts) != 2 {
 		http.Error(w, "Invalid state", http.StatusBadRequest)
+		log.Println("Invalid state parameter:", state)
 		return
 	}
 
-	// Gets code for auth
+	userID := parts[1] // Extract userID from the state parameter
+
+	// Validate the state
+	if state != sc.State {
+		http.Error(w, "Invalid state", http.StatusBadRequest)
+		log.Println("State mismatch:", state)
+		return
+	}
+
+	// Get the authorization code from the callback
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		http.Error(w, "Code is missing", http.StatusBadRequest)
+		log.Println("Authorization code is missing")
 		return
 	}
 
+	// Exchange the code for a token
 	token, err := sc.Config.Exchange(context.Background(), code)
 	if err != nil {
 		http.Error(w, "Couldn't get token", http.StatusForbidden)
-		log.Fatal(err)
+		log.Println("Token exchange error:", err)
+		return
 	}
 
+	// Initialize the Spotify client
 	sc.InitSpotify(token)
 	if sc.Client == nil {
 		http.Error(w, "Couldn't get client", http.StatusForbidden)
+		log.Println("Spotify client initialization failed")
 		return
 	}
 
 	// Notify the main thread that authentication is complete
 	sc.AuthDone <- true
+
+	// Optionally send a success response back to the user
+	_, _ = fmt.Fprintf(w, "Authentication successful for user %s! You can close this window.", userID)
 }
 
+// InitSpotify initializes the Spotify client with the provided token
 func (sc *SpotifyClient) InitSpotify(token *oauth2.Token) {
 	c := spotify.Authenticator{}.NewClient(token)
 	sc.Client = &c
@@ -150,23 +189,34 @@ func (sc *SpotifyClient) InitSpotify(token *oauth2.Token) {
 // GetTopTracks returns the top tracks for the authenticated user
 func (sc *SpotifyClient) GetTopTracks() (string, error) {
 	if sc.Client == nil {
-		return "", errors.New("client is not initialized")
+		err := errors.New("client is not initialized")
+		log.Println("GetTopTracks Error:", err) // Log the error
+		return "", err
 	}
 
 	topTracks, err := sc.Client.CurrentUsersTopTracks()
 	if err != nil {
+		log.Println("Failed to get top tracks:", err) // Log the error
 		return "", err
 	}
 
-	var trackList string
+	var trackList strings.Builder // Use a strings.Builder for better performance
 	for i, track := range topTracks.Tracks {
 		artistNames := make([]string, len(track.Artists))
 		for i, artist := range track.Artists {
 			artistNames[i] = artist.Name
 		}
-		trackList += fmt.Sprintf("%d. %s - %s (Album: %s)\n", i+1, track.Name, strings.Join(artistNames, ", "), track.Album.Name)
+		trackList.WriteString(fmt.Sprintf("%d. %s - %s (Album: %s)\n", i+1, track.Name, strings.Join(artistNames, "; "), track.Album.Name))
 	}
-	return trackList, nil
+
+	userID, exists := GetUserIDFromClient(sc, UserSpotifyClients)
+	if !exists {
+		return "", errors.New("user ID not found")
+	}
+
+	InputTopTracks(trackList.String(), userID)
+
+	return trackList.String(), nil
 }
 
 // GetTopAlbums returns the top albums for the authenticated user
@@ -185,17 +235,18 @@ func (sc *SpotifyClient) GetTopAlbums() (string, error) {
 	timeRange := "long" // Use Spotify's time range keyword
 	hashTable := utils.NewHashTable()
 
-	var options = &spotify.Options{
+	options := &spotify.Options{
 		Limit:     &limit,
 		Timerange: &timeRange,
 	}
 
 	topTracks, err := sc.Client.CurrentUsersTopTracksOpt(options)
 	if err != nil {
+		log.Println("Failed to get top tracks for albums:", err)
 		return "", err
 	}
 
-	var albums []albumCount
+	albums := []albumCount{}
 
 	for _, track := range topTracks.Tracks {
 		count := hashTable.Get(track.Album.Name)
@@ -230,15 +281,21 @@ func (sc *SpotifyClient) GetTopAlbums() (string, error) {
 		return albums[i].Count > albums[j].Count
 	})
 
-	// Prepare a string to hold the formatted album list
-	albumList := ""
+	// Prepare a string to display the top albums
+	var albumList strings.Builder
 	for i, album := range albums {
-		albumList += fmt.Sprintf("%d. %s by %s\n", i+1, album.Album, album.Artists)
-		if i == 9 { // Limit to the top 10 albums
-			break
-		}
+		albumList.WriteString(fmt.Sprintf("%d. %s by %s - Count: %d\n", i+1, album.Album, album.Artists, album.Count))
 	}
 
-	// Return the formatted string containing the top albums without duplicates
-	return albumList, nil
+	return albumList.String(), nil
+}
+
+// GetUserIDFromClient retrieves the user ID associated with the SpotifyClient
+func GetUserIDFromClient(sc *SpotifyClient, userMap map[string]*SpotifyClient) (string, bool) {
+	for userID, client := range userMap {
+		if client == sc {
+			return userID, true
+		}
+	}
+	return "", false
 }

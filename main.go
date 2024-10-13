@@ -3,10 +3,14 @@ package main
 import (
 	"log"
 
+	database "github.com/CesarHPMP/GoBot/dataBase"
 	"github.com/CesarHPMP/GoBot/internal/discord"
 )
 
 func main() {
+	// Initialize database
+	dataSource := database.GetDataSourceName()
+	database.InitDB(dataSource)
 	// Start the bot
 	dg, err := discord.StartBot()
 	if err != nil {

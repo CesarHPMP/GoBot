@@ -14,11 +14,11 @@ type User struct {
 }
 
 type TopTrack struct {
-	ID      int       `db:"id"`
-	UserID  int       `db:"user_id"`
-	TrackID string    `db:"track_id"`
-	Name    string    `db:"name"`
-	Artists string    `db:"artists"` // Can store as a comma-separated string
-	Album   string    `db:"album"`
-	AddedAt time.Time `db:"added_at"`
+	ID      int        `db:"id"`
+	UserID  int        `db:"user_id"`
+	TrackID string     `db:"track_id"`
+	Name    string     `db:"name"`
+	Artists string     `db:"artists"` // Can store as a comma-separated string
+	Album   string     `db:"album"`
+	AddedAt time.Month `db:"added_at"`
 }

@@ -1,9 +1,6 @@
 package spotify
 
 import (
-	"encoding/csv"
-	"errors"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -12,37 +9,39 @@ import (
 )
 
 // InputTopTracks reads top tracks from a specified CSV file and stores them in the database
-func InputTopTracks(dataSourceName string) error {
-	file, err := os.Open(dataSourceName)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
+func InputTopTracks(trackpack string, userID string) error {
 
-	reader := csv.NewReader(file)
-	// Optionally, you can configure the reader (like setting the delimiter)
-	reader.Comma = ',' // Assuming the CSV is comma-delimited
+	tracks := strings.Split(trackpack, ". -")
 
-	// Read all records from the CSV
-	records, err := reader.ReadAll()
-	if err != nil {
-		return err
-	}
+	for _, record := range tracks {
 
-	// Loop through the records and save them to the database
-	for _, record := range records {
-		// Assuming the CSV format: Track Name, Artist, Album
-		if len(record) < 3 {
-			return errors.New("record has insufficient fields: " + strings.Join(record, ", "))
+		trackName := string(record[0])
+		artist := string(record[1])
+		album := string(record[2])
+
+		date := time.Now().Month()
+		sumName, err := strconv.Atoi(trackName)
+
+		if err != nil {
+			return err
 		}
 
-		trackName := strings.TrimSpace(record[0])
-		artist := strings.TrimSpace(record[1])
-		album := strings.TrimSpace(record[2])
+		sumArtist, err := strconv.Atoi(artist)
 
-		_, month, year := time.Now().Date()
-		date := string(month) + string(year)
-		dateint, err := strconv.Atoi(date)
+		if err != nil {
+			return err
+		}
+
+		sumAlbum, err := strconv.Atoi(album)
+
+		if err != nil {
+			return err
+		}
+
+		trackSum := sumAlbum + sumArtist + sumName
+		trackID := strconv.Itoa(trackSum)
+
+		intUserID, err := strconv.Atoi(userID)
 
 		if err != nil {
 			return err
@@ -50,15 +49,17 @@ func InputTopTracks(dataSourceName string) error {
 
 		// Create a Track instance
 		track := &db.TopTrack{
-			UserID:  0, // You can modify this to reflect the actual user ID
+			ID:      1 + 1,
+			UserID:  intUserID, // You can modify this to reflect the actual user ID
+			TrackID: trackID,
 			Name:    trackName,
 			Artists: artist,
 			Album:   album,
-			AddedAt: dateint,
+			AddedAt: date,
 		}
 
 		// Store the track in the database
-		if err := db.SaveTrack(track); err != nil {
+		if err := db.SaveTrack(userID, *track); err != nil {
 			return err
 		}
 	}

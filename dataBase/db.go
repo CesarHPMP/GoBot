@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 
 	_ "github.com/mattn/go-sqlite3" // SQLite driver
@@ -39,7 +40,7 @@ func createTables() {
 	// Tracks table
 	createTrackTable := `CREATE TABLE IF NOT EXISTS tracks (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		user_id INTEGER,
+		user_id TEXT NOT NULL UNIQUE,
 		track_name TEXT,
 		artist TEXT,
 		album TEXT,
@@ -50,4 +51,30 @@ func createTables() {
 	if _, err := Database.Exec(createTrackTable); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// SaveTrack saves a user's top tracks to the database
+func SaveTrack(userID string, track TopTrack) error {
+	// Create tables if they don't exist
+	createTables()
+
+	// Find the user's internal ID
+	var id int
+	err := Database.QueryRow(`SELECT id FROM users WHERE user_id = ?`, userID).Scan(&id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("user not found")
+		}
+		return err
+	}
+
+	// Insert the track data
+	query := `INSERT INTO tracks (user_id, track_name, artist, album) VALUES (?, ?, ?, ?)`
+	_, err = Database.Exec(query, id, track.Name, track.Artists, track.Album)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

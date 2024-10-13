@@ -12,7 +12,6 @@ import (
 
 var Finish_run = make(chan bool)
 var Wg sync.WaitGroup // Add WaitGroup to track async operations
-var userSpotifyClients = make(map[string]*Myspotify.SpotifyClient)
 
 func StartBot() (*discordgo.Session, error) {
 
@@ -58,7 +57,7 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// Local function to check authentication
 	checkAuth := func() error {
-		if getSpotifyClient(userID) == nil {
+		if GetSpotifyClient(userID) == nil {
 			_, err := s.ChannelMessageSend(m.ChannelID, "Not logged in, please use /connect to log in.")
 			return err
 		}
@@ -76,10 +75,10 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 			// Create a new SpotifyClient for the user
 			userClient := Myspotify.NewSpotifyClient()
-			userSpotifyClients[userID] = userClient
+			Myspotify.UserSpotifyClients[userID] = userClient
 
 			// Start the authentication process for this user
-			spotifyClient := userSpotifyClients[userID].Starting(s, m, userID)
+			spotifyClient := Myspotify.UserSpotifyClients[userID].Starting(s, m, userID)
 			if spotifyClient == nil {
 				log.Println("Spotify authentication failed for user:", userID)
 				return
@@ -97,13 +96,13 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		Wg.Add(1) // Increment WaitGroup counter for the new goroutine
 		go func() {
 			defer Wg.Done()                        // Ensure the counter is decremented when the goroutine finishes
-			userClient := getSpotifyClient(userID) // Get the correct SpotifyClient for this user
+			userClient := GetSpotifyClient(userID) // Get the correct SpotifyClient for this user
 			if userClient == nil {
 				log.Println("User not authenticated:", userID)
 				return
 			}
 
-			topTracks, err := userSpotifyClients[userID].GetTopTracks() // Fetch top tracks for the authenticated user
+			topTracks, err := Myspotify.UserSpotifyClients[userID].GetTopTracks() // Fetch top tracks for the authenticated user
 			if err != nil {
 				log.Println("Error fetching top tracks:", err)
 				return
@@ -121,7 +120,7 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		Wg.Add(1) // Increment WaitGroup counter for the new goroutine
 		go func() {
 			defer Wg.Done() // Ensure the counter is decremented when the goroutine finishes
-			topAlbums, err := userSpotifyClients[userID].GetTopAlbums()
+			topAlbums, err := Myspotify.UserSpotifyClients[userID].GetTopAlbums()
 			if err != nil {
 				log.Println(err)
 				return
@@ -131,8 +130,8 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 }
 
-func getSpotifyClient(userID string) *Myspotify.SpotifyClient {
-	if user_client, exists := userSpotifyClients[userID]; exists {
+func GetSpotifyClient(userID string) *Myspotify.SpotifyClient {
+	if user_client, exists := Myspotify.UserSpotifyClients[userID]; exists {
 		return user_client
 	} else {
 		log.Print("User client does not exist")
