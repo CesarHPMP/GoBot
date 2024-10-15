@@ -44,9 +44,7 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 	var userID = m.Author.ID
 
-	// Log the received message object
-	log.Printf("Received message object: %+v\n", m)
-	log.Printf("Message content length: %d\n", len(m.Content))
+	// Log the received message
 	log.Printf("Raw message content: %q\n", m.Content)
 
 	// Check if the message content is empty
@@ -67,6 +65,25 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Use switch to handle commands
 	switch {
 	case strings.HasPrefix(m.Content, "/connect"):
+		conneted := GetSpotifyClient(m.Author.ID)
+		if conneted != nil {
+			if conneted.Connected {
+				_, err := s.ChannelMessageSend(m.ChannelID, "You are already logged in.")
+				if err != nil {
+					return
+				}
+				return
+			}
+
+		} else {
+			_, checked := Myspotify.GetUserIDFromClient(Myspotify.UserSpotifyClients[m.Author.ID], Myspotify.UserSpotifyClients)
+			if checked {
+				_, err := s.ChannelMessageSend(m.ChannelID, "You are already registered in another account.")
+				if err != nil {
+					return
+				}
+			}
+		}
 		userID := m.Author.ID
 
 		Wg.Add(1) // Increment WaitGroup counter for the new goroutine

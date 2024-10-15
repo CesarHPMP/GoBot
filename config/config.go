@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 )
 
@@ -12,6 +13,8 @@ var (
 	SpotifyID     string
 	SpotifySecret string
 )
+
+var Router = mux.NewRouter()
 
 func LoadConfig() (string, string, string) {
 	err := godotenv.Load("../spotify.env")

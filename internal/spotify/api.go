@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 	"github.com/zmb3/spotify"
 	"golang.org/x/oauth2"
@@ -74,7 +73,7 @@ func (sc *SpotifyClient) Starting(dg *discordgo.Session, m *discordgo.MessageCre
 	}
 
 	// Generate the authorization URL with userID in the state parameter
-	url := sc.Config.AuthCodeURL(sc.State + ":" + userID)
+	url := sc.Config.AuthCodeURL(sc.State)
 
 	// Send the authorization URL to the user
 	if _, err := dg.ChannelMessageSend(m.ChannelID, "Please log in to Spotify by visiting the following page in your browser: "+url); err != nil {
@@ -82,14 +81,13 @@ func (sc *SpotifyClient) Starting(dg *discordgo.Session, m *discordgo.MessageCre
 	}
 
 	port := ":8080"
-	router := mux.NewRouter()
 
 	// Register the callback handler
-	router.HandleFunc("/callback/{userID}", sc.CompleteAuth).Methods("GET")
+	Setup.Router.HandleFunc("/callback", sc.CompleteAuth).Methods("GET")
 
 	srv := &http.Server{
 		Addr:    port,
-		Handler: router,
+		Handler: Setup.Router,
 	}
 
 	// Create a timeout channel to avoid waiting indefinitely
@@ -131,23 +129,6 @@ func (sc *SpotifyClient) Starting(dg *discordgo.Session, m *discordgo.MessageCre
 
 // CompleteAuth handles the Spotify callback and completes the authentication process
 func (sc *SpotifyClient) CompleteAuth(w http.ResponseWriter, r *http.Request) {
-	// Extract the state parameter
-	state := r.URL.Query().Get("state")
-	parts := strings.Split(state, ":")
-	if len(parts) != 2 {
-		http.Error(w, "Invalid state", http.StatusBadRequest)
-		log.Println("Invalid state parameter:", state)
-		return
-	}
-
-	userID := parts[1] // Extract userID from the state parameter
-
-	// Validate the state
-	if state != sc.State {
-		http.Error(w, "Invalid state", http.StatusBadRequest)
-		log.Println("State mismatch:", state)
-		return
-	}
 
 	// Get the authorization code from the callback
 	code := r.URL.Query().Get("code")
@@ -177,7 +158,7 @@ func (sc *SpotifyClient) CompleteAuth(w http.ResponseWriter, r *http.Request) {
 	sc.AuthDone <- true
 
 	// Optionally send a success response back to the user
-	_, _ = fmt.Fprintf(w, "Authentication successful for user %s! You can close this window.", userID)
+	_, _ = fmt.Fprintf(w, "Authentication successful for user! You can close this window.")
 }
 
 // InitSpotify initializes the Spotify client with the provided token
@@ -284,7 +265,7 @@ func (sc *SpotifyClient) GetTopAlbums() (string, error) {
 	// Prepare a string to display the top albums
 	var albumList strings.Builder
 	for i, album := range albums {
-		albumList.WriteString(fmt.Sprintf("%d. %s by %s - Count: %d\n", i+1, album.Album, album.Artists, album.Count))
+		albumList.WriteString(fmt.Sprintf("%d. %s by %s\n", i+1, album.Album, album.Artists))
 	}
 
 	return albumList.String(), nil
