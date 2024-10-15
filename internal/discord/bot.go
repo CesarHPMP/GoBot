@@ -65,9 +65,9 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Use switch to handle commands
 	switch {
 	case strings.HasPrefix(m.Content, "/connect"):
-		conneted := GetSpotifyClient(m.Author.ID)
-		if conneted != nil {
-			if conneted.Connected {
+		connected := GetSpotifyClient(m.Author.ID)
+		if connected != nil {
+			if connected.Connected {
 				_, err := s.ChannelMessageSend(m.ChannelID, "You are already logged in.")
 				if err != nil {
 					return
@@ -75,14 +75,6 @@ func MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 				return
 			}
 
-		} else {
-			_, checked := Myspotify.GetUserIDFromClient(Myspotify.UserSpotifyClients[m.Author.ID], Myspotify.UserSpotifyClients)
-			if checked {
-				_, err := s.ChannelMessageSend(m.ChannelID, "You are already registered in another account.")
-				if err != nil {
-					return
-				}
-			}
 		}
 		userID := m.Author.ID
 
